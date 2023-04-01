@@ -2,7 +2,9 @@ import {useState,useEffect} from "react"
 import axios from "axios"
 import './App.css'
 import dogService from './services/dogs'
+import Info from "./components/Info"
 
+// interface for initial dogs list
 export interface Breed {
   Dog: {
     name: string,
@@ -18,18 +20,17 @@ function App() {
   const [dogsDB, setDogsDB] = useState<Breed['Dog']>([])
   const [show, showDogs] = useState<Boolean>(false)
   const [breed, setBreed] = useState<string>('')
-  const [image, setImage] = useState<string | null>(null)
+  const [image, setImage] = useState<string>('')
   const [url, setUrl] = useState<string>('')
   const [likes, setLikes] = useState<number>(0)
   const [dislikes, setDislikes] = useState<number>(0)
   const [clickCount, setClickcount] = useState<number>(0)
 
+  // show the list of dogs
   const handleButtonClick = () => {
     showDogs(true)
-    console.log(dogs)
-    console.log(dogsDB)
   } 
-
+// fetch dogs already in database and combine the data with the dog.ceo list of all dogs
   useEffect(() => {
     dogService.getAll().then(initialDogs => {
       setDogsDB(initialDogs)
@@ -39,7 +40,6 @@ function App() {
         const dogsList: Breed['Dog'] = Object.keys(response.data.message).map((breedId) => {
           const breedName = breedId.charAt(0).toUpperCase() + breedId.substring(1)
           const dbdog = initialDogs.find((dog: { name: string }) => dog.name === breedName)
-    //      console.log(dbdog)
           return {
             name: breedName,
             url: `https://dog.ceo/api/breed/${breedId}/images`,
@@ -52,32 +52,31 @@ function App() {
       })
     }, [])
 
+  // handle click/choosing dog breed => set up all proper variables and fetch a random photo of the breed
   const handleClick = async (name: string, url: string, likes: number, dislikes: number) => {
-    console.log(url, name, likes, dislikes)
-    console.log(dogs.find(dog => dog.name === name))
     setClickcount(0)
     setBreed(name)
     setLikes(likes)
     setDislikes(dislikes)
     setUrl(url)
-
     let response = await fetch(url)
     let data = await response.json()
     let pic = data.message[Math.floor(Math.random() * data.message.length)]
     setImage(pic)
-   // console.log(name, likes, dislikes, url, pic)
     }
 
-  const handleLikesClick = async (name: string, likes: number, dislikes: number, url: string) => {
+  // handle LIKE/DISLIKE click, update database and frontend listings + limit LIKING to 1 click
+  const handleVotesClick = async (name: string, likes: number, dislikes: number, url: string, votetype: 'LIKE' | 'DISLIKE') => {
     if (clickCount < 1) {
       const dogindb = dogsDB.find((dog: {name: string}) => dog.name === name)
       
+      // IF breed already in db, update the db ELSE create a new entry to db
       if (dogindb) {
         const idDB = dogindb.id
         const dog = {
-     //     name: name,
-          likes: dogindb.likes + 1,
-          dislikes: dogindb.dislikes,
+          name: dogindb.name,
+          likes: votetype === 'LIKE' ? dogindb.likes + 1 : dogindb.likes,
+          dislikes: votetype === 'DISLIKE' ? dogindb.dislikes + 1 : dogindb.dislikes,
           url: url
         }
         dogService
@@ -86,12 +85,13 @@ function App() {
             setDogsDB(dogsDB.map(dog => dog.id !== idDB ? dog : returnedDog))
             setDogs(dogs.map(dog => dog.id !== idDB ? dog : returnedDog))
             setLikes(dog.likes)
+            setDislikes(dog.dislikes)
           })
       } else {
         const dog = {
           name: name,
-          likes: likes + 1,
-          dislikes: dislikes,
+          likes: votetype === 'LIKE' ? likes + 1 : likes,
+          dislikes: votetype === 'DISLIKE' ? dislikes + 1 : dislikes,
           url: url
         }
         dogService
@@ -100,48 +100,10 @@ function App() {
             setDogsDB(dogsDB.concat(returnedDog))
             setDogs(dogs.map(d => d.name !== name ? d : returnedDog))
             setLikes(dog.likes)
-          })
-      }
-      setClickcount(1)
-    } else {
-      return alert('You can only vote once!')
-    }
-  }
-
-  const handleDislikesClick = async (name: string, likes: number, dislikes: number, url: string) => {
-    if (clickCount < 1) {
-      const dogindb = dogsDB.find((dog: {name: string}) => dog.name === name)
-
-      if (dogindb) {
-        const idDB = dogindb.id
-        const dog = {
-    //      name: name,
-          likes: dogindb.likes,
-          dislikes: dogindb.dislikes + 1,
-          url: url
-        }
-        dogService
-          .update(idDB, dog)
-          .then(returnedDog => {
-            setDogsDB(dogsDB.map(dog => dog.id !== idDB ? dog : returnedDog))
-            setDogs(dogs.map(dog => dog.id !== idDB ? dog : returnedDog))
-            setDislikes(dog.dislikes)
-          })
-      } else {
-        const dog = {
-          name: name,
-          likes: likes,
-          dislikes: dislikes + 1,
-          url: url
-        }
-        dogService
-          .create(dog)
-          .then(returnedDog => {
-            setDogsDB(dogsDB.concat(returnedDog))
-            setDogs(dogs.map(d => d.name !== name ? d : returnedDog))
             setDislikes(dog.dislikes)
           })
       }
+      
       setClickcount(1)
     } else {
       return alert('You can only vote once!')
@@ -164,21 +126,17 @@ function App() {
           </ul>
         </div>
         <div className="Info">
-          {image ? 
-            <img src={image} alt='dog' height='400'/> : null}
-          {breed ? <h2>{breed}</h2> : null}
-          <button type="button" onClick={() => handleLikesClick(breed, likes, dislikes, url)}> LIKE </button>{likes || likes === 0 ? <>{likes}</> : <>no likes?</>}<br></br>
-          <button type="button" onClick={() => handleDislikesClick(breed, likes, dislikes, url)}> DISLIKE </button> {dislikes || dislikes === 0 ? <>{dislikes}</> : <>no likes?</>}
+          {breed ?
+            <Info image={image}
+            breed={breed}
+            likes={likes}
+            dislikes={dislikes}
+            url={url}
+            handleVotesClick={handleVotesClick}/> : null}
         </div>
       </div>
-
     </div>
   )
 }
 
-export default App;
-
-/* 
-          {image ? 
-          <img src={image} alt='dog' height='400'/> : null}
-*/
+export default App
